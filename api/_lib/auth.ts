@@ -1,5 +1,4 @@
 import { VercelRequest } from '@vercel/node';
-import jwt from 'jsonwebtoken';
 
 export interface AuthUser {
   id: string;
@@ -14,6 +13,9 @@ export async function verifyAuth(req: VercelRequest): Promise<AuthUser | null> {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
 
   try {
+    const jwtModule = await import('jsonwebtoken');
+    const jwt = jwtModule.default || jwtModule;
+    
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
     

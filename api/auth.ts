@@ -32,8 +32,10 @@ async function handleRegister(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { PrismaClient } = await import('@prisma/client');
-    const bcrypt = await import('bcryptjs');
-    const jwt = await import('jsonwebtoken');
+    const bcryptModule = await import('bcryptjs');
+    const jwtModule = await import('jsonwebtoken');
+    const bcrypt = bcryptModule.default || bcryptModule;
+    const jwt = jwtModule.default || jwtModule;
     
     const prisma = new PrismaClient();
     const { employeeId, name, email, password, department } = req.body;
@@ -75,8 +77,10 @@ async function handleLogin(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { PrismaClient } = await import('@prisma/client');
-    const bcrypt = await import('bcryptjs');
-    const jwt = await import('jsonwebtoken');
+    const bcryptModule = await import('bcryptjs');
+    const jwtModule = await import('jsonwebtoken');
+    const bcrypt = bcryptModule.default || bcryptModule;
+    const jwt = jwtModule.default || jwtModule;
     
     const prisma = new PrismaClient();
     const { employeeId, password } = req.body;
