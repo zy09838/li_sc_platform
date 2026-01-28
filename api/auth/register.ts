@@ -1,8 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { prisma } from '../_lib/prisma';
 import { setCorsHeaders } from '../_lib/cors';
+
+const JWT_OPTIONS: SignOptions = {
+  expiresIn: '7d'
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
@@ -62,7 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const token = jwt.sign(
       { userId: user.id },
       process.env.JWT_SECRET!,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      JWT_OPTIONS
     );
 
     return res.status(201).json({
