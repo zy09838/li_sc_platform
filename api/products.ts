@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyAuth } from './lib/auth.js';
-import { prisma } from './lib/prisma.js';
-import { setCorsHeaders } from './lib/cors.js';
+import { verifyAuth } from '../src/lib/auth.js';
+import { prisma } from '../src/lib/prisma.js';
+import { setCorsHeaders } from '../src/lib/cors.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
