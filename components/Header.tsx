@@ -45,7 +45,7 @@ export const Header: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 shrink-0">
-          <div className="w-8 h-8 bg-teal-700 rounded-lg flex items-center justify-center text-white font-black text-lg">
+          <div className="w-10 h-10 bg-teal-700 rounded-lg flex items-center justify-center text-white font-black text-base">
             理链
           </div>
           <span className="font-bold text-gray-900 hidden sm:block">Li-SC</span>
