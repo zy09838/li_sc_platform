@@ -16,7 +16,7 @@ export const Header: React.FC = () => {
   const navItems = [
     { path: '/', label: '首页' },
     { path: '/training', label: '培训中心' },
-    { path: '/ai-lab', label: 'AI实验室' },
+    { path: '/ai-lab', label: 'AI赋能' },
     { path: '/activities', label: '活动专区' },
     { path: '/articles', label: '发文专区' },
     { path: '/moments', label: '动态广场' },
@@ -46,7 +46,7 @@ export const Header: React.FC = () => {
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 shrink-0">
           <div className="w-8 h-8 bg-teal-700 rounded-lg flex items-center justify-center text-white font-black text-lg">
-            理
+            理链
           </div>
           <span className="font-bold text-gray-900 hidden sm:block">Li-SC</span>
         </Link>
