@@ -1,5 +1,5 @@
 {
-  "buildCommand": "prisma generate && npm run build",
+  "buildCommand": "prisma generate && prisma db push --skip-generate && npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "functions": {
