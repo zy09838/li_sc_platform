@@ -10,6 +10,7 @@ interface Product {
   name: string;
   description?: string;
   points: number;
+  price?: number;
   imageUrl?: string;
   category: string;
   stock: number;
@@ -71,7 +72,15 @@ export const MallView: React.FC = () => {
         category: categoryFilter || undefined
       });
       if (response.success) {
-        let filtered = response.data.products;
+        const normalizedProducts = response.data.products.map((product: Product) => ({
+          ...product,
+          points: Number(
+            (product as any).points ??
+            (product as any).price ??
+            0
+          )
+        }));
+        let filtered = normalizedProducts;
         if (searchQuery) {
           filtered = filtered.filter((p: Product) => 
             p.name.toLowerCase().includes(searchQuery.toLowerCase())
