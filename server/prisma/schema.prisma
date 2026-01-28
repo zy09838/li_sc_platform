@@ -1,0 +1,410 @@
+// Prisma schema for Li-SC Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ User & Auth ============
+
+model User {
+  id          String   @id @default(uuid())
+  employeeId  String   @unique @map("employee_id")
+  name        String
+  email       String   @unique
+  password    String
+  avatarUrl   String?  @map("avatar_url")
+  department  String?
+  role        String   @default("user") // user, admin, super_admin
+  points      Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  articles            Article[]
+  comments            Comment[]
+  articleLikes        ArticleLike[]
+  courseProgress      UserCourseProgress[]
+  activityRegs        ActivityRegistration[]
+  userVotes           UserVote[]
+  orders              Order[]
+  pointTransactions   PointTransaction[]
+  taskCompletions     UserTaskCompletion[]
+  wishes              Wish[]
+  wishLikes           WishLike[]
+  foodRecommendations FoodRecommendation[]
+  aiPrompts           AIPrompt[]
+  notifications       Notification[]
+  createdActivities   Activity[]
+
+  @@map("users")
+}
+
+// ============ Articles & Comments ============
+
+model Article {
+  id            String   @id @default(uuid())
+  title         String
+  summary       String?
+  content       String
+  authorId      String   @map("author_id")
+  category      String?
+  tags          String[]
+  imageUrl      String?  @map("image_url")
+  views         Int      @default(0)
+  likes         Int      @default(0)
+  commentsCount Int      @default(0) @map("comments_count")
+  isTop         Boolean  @default(false) @map("is_top")
+  isOfficial    Boolean  @default(false) @map("is_official")
+  status        String   @default("published") // draft, published, archived
+  publishedAt   DateTime? @map("published_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  author   User          @relation(fields: [authorId], references: [id])
+  comments Comment[]
+  articleLikes ArticleLike[]
+
+  @@map("articles")
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  articleId String   @map("article_id")
+  authorId  String   @map("author_id")
+  parentId  String?  @map("parent_id")
+  likes     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  article  Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id])
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies  Comment[] @relation("CommentReplies")
+
+  @@map("comments")
+}
+
+model ArticleLike {
+  id        String   @id @default(uuid())
+  articleId String   @map("article_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([articleId, userId])
+  @@map("article_likes")
+}
+
+// ============ Training & Knowledge ============
+
+model Course {
+  id          String   @id @default(uuid())
+  title       String
+  instructor  String?
+  thumbnailUrl String? @map("thumbnail_url")
+  duration    String?
+  category    String?
+  description String?
+  videoCount  Int      @default(0) @map("video_count")
+  status      String   @default("active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  userProgress UserCourseProgress[]
+
+  @@map("courses")
+}
+
+model UserCourseProgress {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  courseId      String    @map("course_id")
+  progress      Int       @default(0) // 0-100
+  lastStudiedAt DateTime? @map("last_studied_at")
+  completedAt   DateTime? @map("completed_at")
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+  @@map("user_course_progress")
+}
+
+model KnowledgeDoc {
+  id          String   @id @default(uuid())
+  title       String
+  fileType    String?  @map("file_type") // pdf, ppt, word, excel
+  fileUrl     String   @map("file_url")
+  fileSize    String?  @map("file_size")
+  description String?
+  category    String?
+  uploaderId  String   @map("uploader_id")
+  downloads   Int      @default(0)
+  tags        String[]
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("knowledge_docs")
+}
+
+model LearningPath {
+  id          String @id @default(uuid())
+  title       String
+  description String?
+  icon        String?
+  stepsCount  Int    @default(0) @map("steps_count")
+  level       String @default("Beginner") // Beginner, Advanced, Expert
+
+  @@map("learning_paths")
+}
+
+// ============ Activities ============
+
+model Activity {
+  id              String   @id @default(uuid())
+  title           String
+  description     String?
+  imageUrl        String?  @map("image_url")
+  date            DateTime
+  location        String?
+  status          String   @default("upcoming") // upcoming, ongoing, ended
+  maxParticipants Int?     @map("max_participants")
+  isQuarterly     Boolean  @default(false) @map("is_quarterly")
+  hasVoting       Boolean  @default(false) @map("has_voting")
+  createdById     String   @map("created_by_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  createdBy     User                   @relation(fields: [createdById], references: [id])
+  registrations ActivityRegistration[]
+  votes         ActivityVote[]
+
+  @@map("activities")
+}
+
+model ActivityRegistration {
+  id           String   @id @default(uuid())
+  activityId   String   @map("activity_id")
+  userId       String   @map("user_id")
+  registeredAt DateTime @default(now()) @map("registered_at")
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@unique([activityId, userId])
+  @@map("activity_registrations")
+}
+
+model ActivityVote {
+  id         String   @id @default(uuid())
+  activityId String   @map("activity_id")
+  title      String?
+  options    Json     // [{id, label, count}]
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  activity  Activity   @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  userVotes UserVote[]
+
+  @@map("activity_votes")
+}
+
+model UserVote {
+  id       String   @id @default(uuid())
+  voteId   String   @map("vote_id")
+  userId   String   @map("user_id")
+  optionId String   @map("option_id")
+  votedAt  DateTime @default(now()) @map("voted_at")
+
+  vote ActivityVote @relation(fields: [voteId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id])
+
+  @@unique([voteId, userId])
+  @@map("user_votes")
+}
+
+// ============ Points & Mall ============
+
+model Product {
+  id        String   @id @default(uuid())
+  name      String
+  price     Int      // Points price
+  imageUrl  String?  @map("image_url")
+  category  String?
+  stock     Int      @default(0)
+  tags      String[]
+  isHot     Boolean  @default(false) @map("is_hot")
+  isNew     Boolean  @default(false) @map("is_new")
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  orders Order[]
+
+  @@map("products")
+}
+
+model Order {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  productId   String   @map("product_id")
+  pointsSpent Int      @map("points_spent")
+  status      String   @default("pending") // pending, confirmed, shipped, completed
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("orders")
+}
+
+model PointTransaction {
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  type              String   // in, out
+  amount            Int
+  reason            String?
+  relatedEntityType String?  @map("related_entity_type") // article, course, order, checkin
+  relatedEntityId   String?  @map("related_entity_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("point_transactions")
+}
+
+model DailyTask {
+  id       String  @id @default(uuid())
+  title    String
+  reward   Int
+  type     String  // checkin, read, download, learn
+  isActive Boolean @default(true) @map("is_active")
+
+  completions UserTaskCompletion[]
+
+  @@map("daily_tasks")
+}
+
+model UserTaskCompletion {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  taskId        String   @map("task_id")
+  completedDate DateTime @map("completed_date") @db.Date
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User      @relation(fields: [userId], references: [id])
+  task DailyTask @relation(fields: [taskId], references: [id])
+
+  @@unique([userId, taskId, completedDate])
+  @@map("user_task_completions")
+}
+
+// ============ Moments ============
+
+model Wish {
+  id          String   @id @default(uuid())
+  content     String
+  authorId    String   @map("author_id")
+  isAnonymous Boolean  @default(true) @map("is_anonymous")
+  color       String?
+  likes       Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  author    User       @relation(fields: [authorId], references: [id])
+  wishLikes WishLike[]
+
+  @@map("wishes")
+}
+
+model WishLike {
+  id        String   @id @default(uuid())
+  wishId    String   @map("wish_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  wish Wish @relation(fields: [wishId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([wishId, userId])
+  @@map("wish_likes")
+}
+
+model FoodRecommendation {
+  id            String   @id @default(uuid())
+  name          String
+  rating        Float?
+  imageUrl      String?  @map("image_url")
+  tags          String[]
+  recommenderId String   @map("recommender_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  recommender User @relation(fields: [recommenderId], references: [id])
+
+  @@map("food_recommendations")
+}
+
+// ============ AI Lab ============
+
+model AITool {
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+  icon        String?
+  category    String? // Writing, Image, Data, Office
+  url         String?
+  isInternal  Boolean @default(false) @map("is_internal")
+  clickCount  Int     @default(0) @map("click_count")
+
+  @@map("ai_tools")
+}
+
+model AIPrompt {
+  id        String   @id @default(uuid())
+  title     String
+  scenario  String?
+  content   String
+  tags      String[]
+  copyCount Int      @default(0) @map("copy_count")
+  authorId  String?  @map("author_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  author User? @relation(fields: [authorId], references: [id])
+
+  @@map("ai_prompts")
+}
+
+model AINews {
+  id          String   @id @default(uuid())
+  title       String
+  summary     String?
+  imageUrl    String?  @map("image_url")
+  tag         String?
+  sourceUrl   String?  @map("source_url")
+  publishedAt DateTime @default(now()) @map("published_at")
+
+  @@map("ai_news")
+}
+
+// ============ Notifications ============
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String   // comment, like, system, activity
+  title     String
+  content   String?
+  link      String?
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
