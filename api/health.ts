@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import bcrypt from 'bcryptjs';
 import { setCorsHeaders } from './_lib/cors';
-import { prisma } from './_lib/prisma';
 
 const ADMIN_SECRET = process.env.ADMIN_SECRET || 'li-sc-seed-2026';
 
@@ -15,26 +14,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return handleSeed(req, res);
   }
 
-  // Default: health check
-  let dbStatus = 'unknown';
-  let dbError = null;
-  let userCount = 0;
-
-  try {
-    userCount = await prisma.user.count();
-    dbStatus = 'connected';
-  } catch (error: any) {
-    dbStatus = 'error';
-    dbError = error.message;
+  if (action === 'db-status') {
+    return handleDbStatus(req, res);
   }
 
+  // Default: simple health check (no DB)
   return res.status(200).json({
     success: true,
     message: 'Li-SC Platform API is running',
     timestamp: new Date().toISOString(),
-    database: { status: dbStatus, userCount, error: dbError },
-    env: { hasDbUrl: !!process.env.DATABASE_URL, hasJwtSecret: !!process.env.JWT_SECRET }
+    env: { 
+      hasDbUrl: !!process.env.DATABASE_URL, 
+      hasDirectUrl: !!process.env.DIRECT_URL,
+      hasJwtSecret: !!process.env.JWT_SECRET 
+    }
   });
+}
+
+async function handleDbStatus(req: VercelRequest, res: VercelResponse) {
+  try {
+    const { prisma } = await import('./_lib/prisma');
+    const userCount = await prisma.user.count();
+    return res.status(200).json({
+      success: true,
+      database: { status: 'connected', userCount }
+    });
+  } catch (error: any) {
+    return res.status(200).json({
+      success: false,
+      database: { status: 'error', error: error.message }
+    });
+  }
 }
 
 async function handleSeed(req: VercelRequest, res: VercelResponse) {
@@ -48,6 +58,7 @@ async function handleSeed(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const { prisma } = await import('./_lib/prisma');
     const hashedPassword = await bcrypt.hash('123456', 10);
 
     // Users
