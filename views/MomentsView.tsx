@@ -307,12 +307,18 @@ export const MomentsView: React.FC = () => {
                     </div>
                   )}
                   <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-50">
-                    <img
-                      src={food.author.avatarUrl || `https://picsum.photos/seed/${food.author.id}/20/20`}
-                      alt={food.author.name}
-                      className="w-4 h-4 rounded-full"
-                    />
-                    <span className="text-[10px] text-gray-400">{food.author.name} 推荐</span>
+                    {food.author ? (
+                      <>
+                        <img
+                          src={food.author.avatarUrl || `https://picsum.photos/seed/${food.author.id}/20/20`}
+                          alt={food.author.name}
+                          className="w-4 h-4 rounded-full"
+                        />
+                        <span className="text-[10px] text-gray-400">{food.author.name} 推荐</span>
+                      </>
+                    ) : (
+                      <span className="text-[10px] text-gray-400">匿名推荐</span>
+                    )}
                   </div>
                 </div>
               </div>

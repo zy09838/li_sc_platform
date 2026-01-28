@@ -91,7 +91,12 @@ export const MallView: React.FC = () => {
     try {
       const response: any = await productsApi.getCategories();
       if (response.success) {
-        setCategories(response.data);
+        const normalized = Array.isArray(response.data)
+          ? response.data
+              .map((item: any) => (typeof item === 'string' ? item : item?.name))
+              .filter(Boolean)
+          : [];
+        setCategories(normalized);
       }
     } catch (error) {
       console.error('Load categories failed:', error);
