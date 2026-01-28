@@ -1,361 +1,452 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Users, FileText, Calendar, Gift, Bell, Settings, BarChart2, 
+  TrendingUp, Eye, Heart, MessageSquare, Clock, Search, Filter,
+  Plus, Edit2, Trash2, ChevronDown, Loader2, CheckCircle, X
+} from 'lucide-react';
+import { useAuthStore } from '../stores/authStore';
+import { articlesApi, activitiesApi, productsApi, usersApi } from '../services/api';
+import { SkeletonTable } from '../components/Loading';
 
-import React, { useState } from 'react';
-import { LayoutGrid, List, BarChart3, Search, Plus, FileSpreadsheet, Edit, Trash2, X, Users, Calendar, ArrowLeft } from 'lucide-react';
-import { Activity, NavTab } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+type AdminTab = 'overview' | 'articles' | 'activities' | 'products' | 'users';
 
-interface AdminViewProps {
-  activities: Activity[];
-  onActivitiesChange: (newActivities: Activity[]) => void;
-  onNavigate: (tab: NavTab) => void;
-}
-
-// Mock Analytics Data
-const dataActivity = [
-  { name: 'Mon', view: 4000, active: 2400 },
-  { name: 'Tue', view: 3000, active: 1398 },
-  { name: 'Wed', view: 2000, active: 9800 },
-  { name: 'Thu', view: 2780, active: 3908 },
-  { name: 'Fri', view: 1890, active: 4800 },
-  { name: 'Sat', view: 2390, active: 3800 },
-  { name: 'Sun', view: 3490, active: 4300 },
-];
-
-const dataTopics = [
-  { name: '供应链战略', value: 400 },
-  { name: '采购谈判', value: 300 },
-  { name: '库存优化', value: 300 },
-  { name: '数字化', value: 200 },
-];
-
-const COLORS = ['#0f766e', '#14b8a6', '#f59e0b', '#ef4444'];
-
-export const AdminView: React.FC<AdminViewProps> = ({ activities, onActivitiesChange, onNavigate }) => {
-  const [adminView, setAdminView] = useState<'list' | 'analytics'>('list');
-  const [adminSearch, setAdminSearch] = useState('');
+export const AdminView: React.FC = () => {
+  const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuthStore();
   
-  // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    title: '',
-    date: '',
-    location: '',
-    description: ''
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [loading, setLoading] = useState(true);
+  
+  // Stats
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    totalArticles: 0,
+    totalActivities: 0,
+    totalProducts: 0,
+    todayViews: 0,
+    todayLikes: 0
   });
+  
+  // Data lists
+  const [articles, setArticles] = useState<any[]>([]);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
 
-  const filteredAdminActivities = activities.filter(a => 
-    a.title.toLowerCase().includes(adminSearch.toLowerCase()) || 
-    a.location.toLowerCase().includes(adminSearch.toLowerCase())
-  );
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+    loadAdminData();
+  }, [isAuthenticated, activeTab]);
 
-  const totalParticipants = activities.reduce((acc, curr) => acc + curr.participants, 0);
-
-  const handleOpenCreate = () => {
-    setEditingId(null);
-    setFormData({ title: '', date: '', location: '', description: '' });
-    setIsModalOpen(true);
-  };
-
-  const handleOpenEdit = (activity: Activity) => {
-    setEditingId(activity.id);
-    setFormData({
-      title: activity.title,
-      date: activity.date,
-      location: activity.location,
-      description: activity.description || ''
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleDelete = (id: string) => {
-    if (window.confirm('确定要删除这个活动吗？')) {
-      onActivitiesChange(activities.filter(a => a.id !== id));
+  const loadAdminData = async () => {
+    setLoading(true);
+    try {
+      switch (activeTab) {
+        case 'overview':
+          // Load stats and leaderboard
+          const leaderboardRes: any = await usersApi.getLeaderboard(10);
+          if (leaderboardRes.success) {
+            setLeaderboard(leaderboardRes.data);
+          }
+          // Mock stats - in real app, would have a dedicated stats API
+          setStats({
+            totalUsers: 156,
+            totalArticles: 89,
+            totalActivities: 24,
+            totalProducts: 45,
+            todayViews: 1234,
+            todayLikes: 89
+          });
+          break;
+        case 'articles':
+          const articlesRes: any = await articlesApi.list({ limit: 20 });
+          if (articlesRes.success) {
+            setArticles(articlesRes.data.articles);
+          }
+          break;
+        case 'activities':
+          const activitiesRes: any = await activitiesApi.list({ limit: 20 });
+          if (activitiesRes.success) {
+            setActivities(activitiesRes.data.activities);
+          }
+          break;
+        case 'products':
+          const productsRes: any = await productsApi.list({ limit: 20 });
+          if (productsRes.success) {
+            setProducts(productsRes.data.products);
+          }
+          break;
+      }
+    } catch (error) {
+      console.error('Load admin data failed:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleExport = () => {
-    alert('正在生成活动名单 Excel 表格...');
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingId) {
-      onActivitiesChange(activities.map(a => a.id === editingId ? { ...a, ...formData } : a));
-    } else {
-      const newAct: Activity = {
-        id: Date.now().toString(),
-        ...formData,
-        status: 'Upcoming',
-        participants: 1,
-        image: `https://picsum.photos/seed/${Date.now()}/400/200`
-      };
-      onActivitiesChange([newAct, ...activities]);
+  const handlePinArticle = async (articleId: string) => {
+    try {
+      await articlesApi.pin(articleId);
+      setArticles(prev => prev.map(a => 
+        a.id === articleId ? { ...a, isPinned: !a.isPinned } : a
+      ));
+    } catch (error) {
+      console.error('Pin article failed:', error);
     }
-    setIsModalOpen(false);
   };
 
-  const renderAdminActivityList = () => (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
-                <div>
-                    <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">活动总数</p>
-                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{activities.length}</h3>
-                </div>
-                <div className="bg-teal-50 text-teal-600 p-3 rounded-xl"><List size={24} /></div>
-            </div>
-            <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
-                <div>
-                    <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">累计报名人数</p>
-                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{totalParticipants}</h3>
-                </div>
-                <div className="bg-orange-50 text-orange-600 p-3 rounded-xl"><Users size={24} /></div>
-            </div>
-            <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
-                <div>
-                    <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">进行中活动</p>
-                    <h3 className="text-3xl font-bold text-gray-900 mt-1">{activities.filter(a => a.status !== 'Ended').length}</h3>
-                </div>
-                <div className="bg-blue-50 text-blue-600 p-3 rounded-xl"><Calendar size={24} /></div>
-            </div>
-        </div>
+  const handleDeleteArticle = async (articleId: string) => {
+    if (!confirm('确定要删除这篇文章吗？')) return;
+    try {
+      await articlesApi.delete(articleId);
+      setArticles(prev => prev.filter(a => a.id !== articleId));
+    } catch (error) {
+      console.error('Delete article failed:', error);
+    }
+  };
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-gray-50 flex flex-wrap justify-between items-center gap-4">
-                <h3 className="font-bold text-gray-800">所有活动明细</h3>
-                <div className="flex gap-3">
-                    <div className="relative">
-                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input 
-                            type="text" 
-                            value={adminSearch}
-                            onChange={(e) => setAdminSearch(e.target.value)}
-                            placeholder="搜索活动主题..." 
-                            className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none w-64"
-                        />
-                    </div>
-                    <button onClick={handleOpenCreate} className="bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-teal-800 flex items-center gap-2 transition-colors">
-                        <Plus size={16} /> 新建活动
-                    </button>
-                </div>
-            </div>
-            
-            <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                    <thead className="bg-gray-50 text-gray-400 text-xs font-bold uppercase tracking-wider">
-                        <tr>
-                            <th className="px-6 py-4">活动名称</th>
-                            <th className="px-6 py-4">状态</th>
-                            <th className="px-6 py-4">时间与地点</th>
-                            <th className="px-6 py-4">报名情况</th>
-                            <th className="px-6 py-4 text-right">管理</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                        {filteredAdminActivities.map(activity => (
-                            <tr key={activity.id} className="hover:bg-gray-50/50 transition-colors group">
-                                <td className="px-6 py-4">
-                                    <div className="font-bold text-gray-800 text-sm">{activity.title}</div>
-                                    {activity.isQuarterly && <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 rounded-full mt-1 inline-block">季度重点</span>}
-                                </td>
-                                <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded text-[10px] font-bold
-                                        ${activity.status === 'Upcoming' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                        {activity.status === 'Upcoming' ? '已发布' : '已结束'}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="text-xs text-gray-700">{activity.date}</div>
-                                    <div className="text-[10px] text-gray-400 mt-1">{activity.location}</div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                            <div className="h-full bg-teal-600" style={{ width: `${Math.min(100, activity.participants)}%` }}></div>
-                                        </div>
-                                        <span className="text-xs text-gray-600 font-mono font-bold">{activity.participants}</span>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <div className="flex justify-end gap-1">
-                                        <button onClick={handleExport} className="p-1.5 text-gray-400 hover:text-teal-600 transition-colors"><FileSpreadsheet size={16}/></button>
-                                        <button onClick={() => handleOpenEdit(activity)} className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors"><Edit size={16}/></button>
-                                        <button onClick={() => handleDelete(activity.id)} className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"><Trash2 size={16}/></button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-  );
-
-  const renderAdminAnalytics = () => (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <h3 className="font-bold text-gray-700 mb-6 border-l-4 border-teal-700 pl-3 text-sm">用户活跃趋势 (每周)</h3>
-                <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={dataActivity}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={10} />
-                            <YAxis axisLine={false} tickLine={false} fontSize={10} />
-                            <Tooltip cursor={{ fill: '#f8fafc' }} />
-                            <Legend wrapperStyle={{ fontSize: 10 }} />
-                            <Bar dataKey="active" name="活跃数" fill="#0f766e" radius={[4, 4, 0, 0]} barSize={15} />
-                            <Bar dataKey="view" name="PV" fill="#ccfbf1" radius={[4, 4, 0, 0]} barSize={15} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <h3 className="font-bold text-gray-700 mb-6 border-l-4 border-teal-700 pl-3 text-sm">热门话题互动分布</h3>
-                <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                            <Pie data={dataTopics} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                                {dataTopics.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                            </Pie>
-                            <Tooltip />
-                            <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: 10 }} />
-                        </PieChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
-            
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 lg:col-span-2">
-                <h3 className="font-bold text-gray-700 mb-6 border-l-4 border-teal-700 pl-3 text-sm">内容质量及互动走势</h3>
-                 <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={dataActivity}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={10} />
-                            <YAxis axisLine={false} tickLine={false} fontSize={10} />
-                            <Tooltip />
-                            <Legend wrapperStyle={{ fontSize: 10 }} />
-                            <Line type="monotone" dataKey="active" name="点赞/评论" stroke="#0f766e" strokeWidth={3} dot={{ r: 4 }} />
-                            <Line type="monotone" dataKey="view" name="总发文" stroke="#f59e0b" strokeDasharray="5 5" />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
-        </div>
-    </div>
-  );
+  const tabs: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'overview', label: '数据概览', icon: <BarChart2 size={18} /> },
+    { id: 'articles', label: '文章管理', icon: <FileText size={18} /> },
+    { id: 'activities', label: '活动管理', icon: <Calendar size={18} /> },
+    { id: 'products', label: '商品管理', icon: <Gift size={18} /> },
+    { id: 'users', label: '用户管理', icon: <Users size={18} /> },
+  ];
 
   return (
-    <div className="space-y-6">
-        <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-                <button 
-                  onClick={() => onNavigate(NavTab.HOME)} 
-                  className="bg-white p-2 rounded-full border border-gray-200 text-gray-400 hover:text-teal-600 transition-colors"
-                >
-                    <ArrowLeft size={18} />
-                </button>
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-800">管理员后台</h2>
-                    <p className="text-sm text-gray-400">统一管理社区活动、内容及运营数据分析</p>
-                </div>
-            </div>
-            <div className="bg-teal-700/5 px-4 py-2 rounded-full border border-teal-100 text-teal-700 text-sm font-bold flex items-center gap-2">
-                <LayoutGrid size={16} /> 理想汽车 Li-SC 数字化中心
-            </div>
+    <div className="animate-in fade-in duration-300">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">管理后台</h1>
+        <p className="text-sm text-gray-500 mt-1">平台数据和内容管理</p>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Sidebar */}
+        <div className="lg:w-56 shrink-0">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-teal-50 text-teal-700 border-l-2 border-teal-700'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-6">
-            <div className="w-full md:w-56 bg-white rounded-2xl border border-gray-100 p-3 shadow-sm flex flex-col gap-1 shrink-0 h-fit sticky top-24">
-                <button 
-                    onClick={() => setAdminView('list')}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all
-                        ${adminView === 'list' ? 'bg-teal-700 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <List size={18} /> 活动管理
-                </button>
-                <button 
-                    onClick={() => setAdminView('analytics')}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all
-                        ${adminView === 'analytics' ? 'bg-teal-700 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <BarChart3 size={18} /> 运营数据
-                </button>
-                <div className="h-px bg-gray-50 my-2"></div>
-                <button onClick={() => onNavigate(NavTab.HOME)} className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-400 hover:text-red-500 transition-colors">
-                   <ArrowLeft size={18} /> 退出管理模式
-                </button>
-            </div>
-
-            <div className="flex-1">
-                {adminView === 'list' ? renderAdminActivityList() : renderAdminAnalytics()}
-            </div>
-        </div>
-
-        {/* Create/Edit Modal */}
-        {isModalOpen && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in zoom-in duration-200">
-                    <div className="p-6 border-b border-gray-50 flex justify-between items-center">
-                        <h3 className="font-bold text-lg text-gray-800">{editingId ? '编辑活动详情' : '策划新活动'}</h3>
-                        <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={20}/></button>
+        {/* Main Content */}
+        <div className="flex-1 min-w-0">
+          {loading ? (
+            <SkeletonTable rows={6} cols={5} />
+          ) : activeTab === 'overview' ? (
+            /* Overview */
+            <div className="space-y-6">
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <Users size={20} className="text-blue-600" />
                     </div>
-                    <form onSubmit={handleSubmit} className="p-8 space-y-4">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">活动主题</label>
-                            <input 
-                                type="text" 
-                                value={formData.title}
-                                onChange={(e) => setFormData({...formData, title: e.target.value})}
-                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:ring-2 focus:ring-teal-500 outline-none transition-all"
-                                placeholder="请输入吸引人的活动标题"
-                                required
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">日期</label>
-                                <input 
-                                    type="date" 
-                                    value={formData.date}
-                                    onChange={(e) => setFormData({...formData, date: e.target.value})}
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:ring-2 focus:ring-teal-500 outline-none transition-all"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">地点</label>
-                                <input 
-                                    type="text" 
-                                    value={formData.location}
-                                    onChange={(e) => setFormData({...formData, location: e.target.value})}
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:ring-2 focus:ring-teal-500 outline-none transition-all"
-                                    placeholder="如：L9 办公室"
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">活动简介</label>
-                            <textarea 
-                                value={formData.description}
-                                onChange={(e) => setFormData({...formData, description: e.target.value})}
-                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm h-32 resize-none focus:bg-white focus:ring-2 focus:ring-teal-500 outline-none transition-all"
-                                placeholder="详细描述活动内容与亮点..."
-                            />
-                        </div>
-                        <div className="pt-6 flex gap-3">
-                            <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors">取消</button>
-                            <button type="submit" className="flex-[2] py-3 bg-teal-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-teal-700/20 hover:bg-teal-800 transition-all active:scale-95">
-                                {editingId ? '保存更改' : '立即发布'}
-                            </button>
-                        </div>
-                    </form>
+                    <div>
+                      <p className="text-2xl font-bold text-gray-800">{stats.totalUsers}</p>
+                      <p className="text-xs text-gray-500">总用户数</p>
+                    </div>
+                  </div>
                 </div>
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                      <FileText size={20} className="text-green-600" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-gray-800">{stats.totalArticles}</p>
+                      <p className="text-xs text-gray-500">文章总数</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                      <Eye size={20} className="text-purple-600" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-gray-800">{stats.todayViews}</p>
+                      <p className="text-xs text-gray-500">今日浏览</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                      <Heart size={20} className="text-red-500" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-gray-800">{stats.todayLikes}</p>
+                      <p className="text-xs text-gray-500">今日点赞</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Leaderboard */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <TrendingUp size={18} className="text-teal-600" /> 用户积分排行
+                </h3>
+                <div className="space-y-3">
+                  {leaderboard.map((u, index) => (
+                    <div key={u.id} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                      <div className={`w-8 h-8 flex items-center justify-center text-sm font-bold rounded-full ${
+                        index === 0 ? 'bg-yellow-500 text-white' : 
+                        index === 1 ? 'bg-gray-400 text-white' : 
+                        index === 2 ? 'bg-orange-700 text-white' :
+                        'bg-gray-200 text-gray-600'
+                      }`}>
+                        {index + 1}
+                      </div>
+                      <img 
+                        src={u.avatarUrl || `https://picsum.photos/seed/${u.id}/40/40`} 
+                        alt={u.name}
+                        className="w-10 h-10 rounded-full border border-gray-200"
+                      />
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-800">{u.name}</p>
+                        <p className="text-xs text-gray-500">{u.department || '未知部门'}</p>
+                      </div>
+                      <span className="text-teal-600 font-bold">{u.points} 分</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-        )}
+          ) : activeTab === 'articles' ? (
+            /* Articles Management */
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="font-bold text-gray-800">文章列表</h3>
+                <button className="bg-teal-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-800 transition-colors flex items-center gap-1">
+                  <Plus size={16} /> 新建文章
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">标题</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">作者</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">分类</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-gray-500">数据</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-gray-500">状态</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-gray-500">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {articles.map(article => (
+                      <tr key={article.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-gray-800 text-sm line-clamp-1">{article.title}</p>
+                          <p className="text-xs text-gray-400">{new Date(article.createdAt).toLocaleDateString('zh-CN')}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <img 
+                              src={article.author?.avatarUrl || `https://picsum.photos/seed/${article.author?.id}/24/24`}
+                              alt={article.author?.name}
+                              className="w-6 h-6 rounded-full"
+                            />
+                            <span className="text-sm text-gray-600">{article.author?.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs bg-teal-50 text-teal-600 px-2 py-0.5 rounded">{article.category}</span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-3 text-xs text-gray-500">
+                            <span className="flex items-center gap-1"><Eye size={12} /> {article.viewCount}</span>
+                            <span className="flex items-center gap-1"><Heart size={12} /> {article.likeCount}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {article.isPinned ? (
+                            <span className="text-xs bg-red-50 text-red-500 px-2 py-0.5 rounded">置顶</span>
+                          ) : (
+                            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">正常</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handlePinArticle(article.id)}
+                              className="p-1 text-gray-400 hover:text-teal-600 transition-colors"
+                              title={article.isPinned ? '取消置顶' : '置顶'}
+                            >
+                              <CheckCircle size={16} />
+                            </button>
+                            <button
+                              onClick={() => navigate(`/articles/${article.id}`)}
+                              className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                              title="查看"
+                            >
+                              <Eye size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteArticle(article.id)}
+                              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                              title="删除"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : activeTab === 'activities' ? (
+            /* Activities Management */
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="font-bold text-gray-800">活动列表</h3>
+                <button className="bg-teal-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-800 transition-colors flex items-center gap-1">
+                  <Plus size={16} /> 新建活动
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">活动名称</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">类型</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">时间</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-gray-500">报名/容量</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-gray-500">状态</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-gray-500">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {activities.map(activity => (
+                      <tr key={activity.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-gray-800 text-sm line-clamp-1">{activity.title}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded">{activity.type}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {new Date(activity.startTime).toLocaleDateString('zh-CN')}
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm text-gray-600">
+                          {activity.registrations || 0}/{activity.capacity || '无限'}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {activity.status === 'upcoming' && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">即将开始</span>}
+                          {activity.status === 'ongoing' && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">进行中</span>}
+                          {activity.status === 'ended' && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">已结束</span>}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button className="p-1 text-gray-400 hover:text-blue-600 transition-colors">
+                              <Eye size={16} />
+                            </button>
+                            <button className="p-1 text-gray-400 hover:text-teal-600 transition-colors">
+                              <Edit2 size={16} />
+                            </button>
+                            <button className="p-1 text-gray-400 hover:text-red-600 transition-colors">
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : activeTab === 'products' ? (
+            /* Products Management */
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="font-bold text-gray-800">商品列表</h3>
+                <button className="bg-teal-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-800 transition-colors flex items-center gap-1">
+                  <Plus size={16} /> 新建商品
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">商品</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">分类</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-gray-500">积分</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-gray-500">库存</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-gray-500">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {products.map(product => (
+                      <tr key={product.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden">
+                              {product.imageUrl ? (
+                                <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center">
+                                  <Gift size={20} className="text-white/80" />
+                                </div>
+                              )}
+                            </div>
+                            <p className="font-medium text-gray-800 text-sm">{product.name}</p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded">{product.category}</span>
+                        </td>
+                        <td className="px-4 py-3 text-center font-bold text-orange-500">{product.points}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`text-sm ${product.stock > 10 ? 'text-green-600' : product.stock > 0 ? 'text-orange-500' : 'text-red-500'}`}>
+                            {product.stock}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button className="p-1 text-gray-400 hover:text-teal-600 transition-colors">
+                              <Edit2 size={16} />
+                            </button>
+                            <button className="p-1 text-gray-400 hover:text-red-600 transition-colors">
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            /* Users Management */
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
+              <Users size={48} className="mx-auto text-gray-300 mb-3" />
+              <p className="text-gray-500">用户管理功能开发中...</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

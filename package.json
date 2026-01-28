@@ -15,20 +15,23 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "lucide-react": "^0.562.0",
-    "recharts": "^3.6.0",
     "@prisma/client": "^6.4.0",
     "@vercel/node": "^3.0.0",
+    "axios": "^1.13.4",
     "bcryptjs": "^3.0.3",
     "jsonwebtoken": "^9.0.3",
-    "uuid": "^13.0.0"
+    "lucide-react": "^0.562.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-router-dom": "^7.13.0",
+    "recharts": "^3.6.0",
+    "uuid": "^13.0.0",
+    "zustand": "^5.0.10"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22.14.0",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^5.0.0",
     "prisma": "^6.4.0",

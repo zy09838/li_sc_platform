@@ -1,0 +1,12 @@
+export { LoginView } from './LoginView';
+export { RegisterView } from './RegisterView';
+export { HomeView } from './HomeView';
+export { TrainingView } from './TrainingView';
+export { ActivityView } from './ActivityView';
+export { ActivityDetailView } from './ActivityDetailView';
+export { ArticleView } from './ArticleView';
+export { ArticleDetailView } from './ArticleDetailView';
+export { MomentsView } from './MomentsView';
+export { MallView } from './MallView';
+export { AdminView } from './AdminView';
+export { AILabView } from './AILabView';

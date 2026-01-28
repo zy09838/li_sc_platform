@@ -1,251 +1,443 @@
+import React, { useState, useEffect } from 'react';
+import { Gift, ShoppingCart, Filter, Search, Package, Clock, CheckCircle, X, Loader2, ChevronRight, Zap } from 'lucide-react';
+import { productsApi } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
+import { useNavigate } from 'react-router-dom';
+import { SkeletonCard } from '../components/Loading';
 
-import React, { useState } from 'react';
-import { MOCK_PRODUCTS } from '../constants';
-import { ShoppingBag, Star, Zap, CheckCircle2, AlertCircle, Filter, Search, Gift, X, Calendar, BookOpen, ArrowRight } from 'lucide-react';
-import { NavTab } from '../types';
-
-interface MallViewProps {
-  userPoints: number;
-  onRedeem: (cost: number) => boolean;
-  onNavigate: (tab: NavTab) => void;
+interface Product {
+  id: string;
+  name: string;
+  description?: string;
+  points: number;
+  imageUrl?: string;
+  category: string;
+  stock: number;
+  isHot?: boolean;
 }
 
-export const MallView: React.FC<MallViewProps> = ({ userPoints, onRedeem, onNavigate }) => {
-  const [filter, setFilter] = useState('全部');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [redeemSuccess, setRedeemSuccess] = useState<string | null>(null);
+interface Order {
+  id: string;
+  productId: string;
+  product: Product;
+  points: number;
+  status: 'pending' | 'processing' | 'shipped' | 'completed' | 'cancelled';
+  createdAt: string;
+}
+
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export const MallView: React.FC = () => {
+  const navigate = useNavigate();
+  const { user, isAuthenticated, updatePoints } = useAuthStore();
   
-  // Advanced Error Handling State
-  const [insufficientData, setInsufficientData] = useState<{
-    productName: string;
-    cost: number;
-    diff: number;
-  } | null>(null);
+  const [activeTab, setActiveTab] = useState<'products' | 'orders'>('products');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pagination, setPagination] = useState<Pagination | null>(null);
+  
+  // Filters
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Modal states
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [exchanging, setExchanging] = useState(false);
+  const [exchangeSuccess, setExchangeSuccess] = useState(false);
 
-  const categories = ['全部', '品牌服饰', '精品车模', '办公文创', '生活周边', '学习资料', '车用配件'];
-
-  const filteredProducts = MOCK_PRODUCTS.filter(product => {
-    const matchesCategory = filter === '全部' || product.category === filter;
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
-
-  const handleRedeemClick = (productName: string, cost: number) => {
-    setInsufficientData(null);
-    setRedeemSuccess(null);
-
-    const success = onRedeem(cost);
-    if (success) {
-      setRedeemSuccess(`成功兑换：${productName}`);
-      setTimeout(() => setRedeemSuccess(null), 3000);
+  useEffect(() => {
+    if (activeTab === 'products') {
+      loadProducts();
+      loadCategories();
     } else {
-      setInsufficientData({
-        productName,
-        cost,
-        diff: cost - userPoints
+      loadOrders();
+    }
+  }, [activeTab]);
+
+  const loadProducts = async (page = 1) => {
+    setLoading(true);
+    try {
+      const response: any = await productsApi.list({
+        page,
+        limit: 12,
+        category: categoryFilter || undefined
       });
+      if (response.success) {
+        let filtered = response.data.products;
+        if (searchQuery) {
+          filtered = filtered.filter((p: Product) => 
+            p.name.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+        }
+        setProducts(filtered);
+        setPagination(response.data.pagination);
+      }
+    } catch (error) {
+      console.error('Load products failed:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
+  const loadCategories = async () => {
+    try {
+      const response: any = await productsApi.getCategories();
+      if (response.success) {
+        setCategories(response.data);
+      }
+    } catch (error) {
+      console.error('Load categories failed:', error);
+    }
+  };
+
+  const loadOrders = async () => {
+    setLoading(true);
+    try {
+      const response: any = await productsApi.getOrders();
+      if (response.success) {
+        setOrders(response.data.orders);
+      }
+    } catch (error) {
+      console.error('Load orders failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExchange = async () => {
+    if (!selectedProduct || !isAuthenticated || !user) return;
+    
+    if ((user.points || 0) < selectedProduct.points) {
+      return;
+    }
+    
+    setExchanging(true);
+    try {
+      const response: any = await productsApi.createOrder(selectedProduct.id);
+      if (response.success) {
+        setExchangeSuccess(true);
+        updatePoints((user.points || 0) - selectedProduct.points);
+        // Update stock
+        setProducts(prev => prev.map(p => 
+          p.id === selectedProduct.id ? { ...p, stock: p.stock - 1 } : p
+        ));
+        setTimeout(() => {
+          setShowConfirmModal(false);
+          setExchangeSuccess(false);
+          setSelectedProduct(null);
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Exchange failed:', error);
+    } finally {
+      setExchanging(false);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusMap: Record<string, { bg: string; text: string; label: string }> = {
+      pending: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: '待处理' },
+      processing: { bg: 'bg-blue-100', text: 'text-blue-700', label: '处理中' },
+      shipped: { bg: 'bg-purple-100', text: 'text-purple-700', label: '已发货' },
+      completed: { bg: 'bg-green-100', text: 'text-green-700', label: '已完成' },
+      cancelled: { bg: 'bg-gray-100', text: 'text-gray-500', label: '已取消' },
+    };
+    const s = statusMap[status] || statusMap.pending;
+    return <span className={`${s.bg} ${s.text} px-2 py-0.5 rounded text-xs`}>{s.label}</span>;
+  };
+
   return (
-    <div className="space-y-6 relative">
-      {/* Success Notification Toast */}
-      {redeemSuccess && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-full shadow-xl z-[70] flex items-center gap-2 animate-in fade-in zoom-in duration-300 backdrop-blur-sm">
-           <CheckCircle2 size={20} /> {redeemSuccess}
+    <div className="animate-in fade-in duration-300">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">积分商城</h1>
+          <p className="text-sm text-gray-500 mt-1">用积分兑换心仪好礼</p>
         </div>
-      )}
+        {isAuthenticated && (
+          <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-4 py-2 rounded-xl flex items-center gap-2">
+            <Zap size={18} fill="currentColor" />
+            <span className="font-bold text-lg">{user?.points || 0}</span>
+            <span className="text-xs opacity-80">可用积分</span>
+          </div>
+        )}
+      </div>
 
-      {/* Insufficient Points Modal */}
-      {insufficientData && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in duration-300">
-            {/* Modal Header */}
-            <div className="bg-orange-50 p-6 flex items-center justify-between border-b border-orange-100">
-               <div className="flex items-center gap-3 text-orange-600">
-                  <div className="bg-white p-2 rounded-xl shadow-sm"><AlertCircle size={24} /></div>
-                  <h3 className="font-bold text-lg">哎呀，积分还差一点点...</h3>
-               </div>
-               <button onClick={() => setInsufficientData(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
-                  <X size={20} />
-               </button>
+      {/* Tabs */}
+      <div className="flex gap-2 mb-6">
+        <button
+          onClick={() => setActiveTab('products')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === 'products'
+              ? 'bg-teal-700 text-white'
+              : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+          }`}
+        >
+          <Gift size={16} /> 商品列表
+        </button>
+        {isAuthenticated && (
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              activeTab === 'orders'
+                ? 'bg-teal-700 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+            }`}
+          >
+            <Package size={16} /> 我的订单
+          </button>
+        )}
+      </div>
+
+      {activeTab === 'products' && (
+        /* Filters */
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && loadProducts(1)}
+                placeholder="搜索商品..."
+                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+              />
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
-
-            {/* Modal Content */}
-            <div className="p-8">
-               <div className="text-center mb-8">
-                  <p className="text-gray-500 text-sm mb-2">您正在尝试兑换</p>
-                  <p className="text-gray-900 font-bold mb-4">{insufficientData.productName}</p>
-                  <div className="bg-gray-50 rounded-2xl py-4 px-6 inline-block">
-                     <p className="text-xs text-gray-400 mb-1">距离兑换还差</p>
-                     <p className="text-3xl font-mono font-black text-orange-500 flex items-center justify-center gap-1">
-                        <Zap size={20} fill="currentColor" /> {insufficientData.diff}
-                     </p>
-                  </div>
-               </div>
-
-               <p className="text-sm font-bold text-gray-800 mb-4 text-center">别担心！您可以通过以下方式快速赚取积分：</p>
-               
-               <div className="space-y-3">
-                  <button 
-                    onClick={() => onNavigate(NavTab.ACTIVITY)}
-                    className="w-full flex items-center gap-4 p-4 bg-white border border-gray-100 rounded-xl hover:border-teal-500 hover:bg-teal-50 transition-all group"
-                  >
-                     <div className="bg-teal-100 text-teal-700 p-2.5 rounded-lg group-hover:bg-teal-600 group-hover:text-white transition-colors">
-                        <Calendar size={20} />
-                     </div>
-                     <div className="text-left flex-1">
-                        <p className="font-bold text-sm text-gray-800">参与社区活动</p>
-                        <p className="text-[10px] text-gray-400">报名并出席线下/线上活动可得 50-200 积分</p>
-                     </div>
-                     <ArrowRight size={16} className="text-gray-300 group-hover:text-teal-500 group-hover:translate-x-1 transition-all" />
-                  </button>
-
-                  <button 
-                    onClick={() => onNavigate(NavTab.TRAINING)}
-                    className="w-full flex items-center gap-4 p-4 bg-white border border-gray-100 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
-                  >
-                     <div className="bg-blue-100 text-blue-700 p-2.5 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                        <BookOpen size={20} />
-                     </div>
-                     <div className="text-left flex-1">
-                        <p className="font-bold text-sm text-gray-800">学习专业知识</p>
-                        <p className="text-[10px] text-gray-400">完成在线课程学习或下载 SOP 可得 10-50 积分</p>
-                     </div>
-                     <ArrowRight size={16} className="text-gray-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
-                  </button>
-               </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-center">
-               <button 
-                  onClick={() => setInsufficientData(null)}
-                  className="text-xs text-gray-400 hover:text-gray-600 font-medium"
-               >
-                  我知道了，先看看别的
-               </button>
+            <div className="flex items-center gap-2">
+              <Filter size={18} className="text-gray-400" />
+              <select
+                value={categoryFilter}
+                onChange={(e) => { setCategoryFilter(e.target.value); loadProducts(1); }}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+              >
+                <option value="">全部分类</option>
+                {categories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
       )}
 
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-teal-800 to-emerald-700 rounded-2xl p-8 text-white relative overflow-hidden shadow-md">
-         <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
-            <div>
-               <h2 className="text-3xl font-bold mb-2 flex items-center gap-3">
-                 <Gift size={32} /> 理链积分商城
-               </h2>
-               <p className="text-teal-100 opacity-90 max-w-md">
-                 您的每一份付出都值得被奖励。用积分兑换专属文化周边，彰显理链人身份。
-               </p>
+      {/* Content */}
+      {loading ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map(i => <SkeletonCard key={i} />)}
+        </div>
+      ) : activeTab === 'products' ? (
+        products.length === 0 ? (
+          <div className="bg-white rounded-xl p-12 text-center border border-gray-100">
+            <Gift size={48} className="mx-auto text-gray-300 mb-3" />
+            <p className="text-gray-400">暂无商品</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {products.map(product => (
+                <div 
+                  key={product.id}
+                  className="bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-all group cursor-pointer"
+                  onClick={() => {
+                    if (!isAuthenticated) {
+                      navigate('/login');
+                      return;
+                    }
+                    setSelectedProduct(product);
+                    setShowConfirmModal(true);
+                  }}
+                >
+                  <div className="h-32 bg-gray-100 relative">
+                    {product.imageUrl ? (
+                      <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center">
+                        <Gift size={40} className="text-white/80" />
+                      </div>
+                    )}
+                    {product.isHot && (
+                      <span className="absolute top-2 left-2 bg-red-500 text-white px-2 py-0.5 rounded text-[10px] font-bold">
+                        热门
+                      </span>
+                    )}
+                    {product.stock <= 0 && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <span className="text-white font-bold">已售罄</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{product.category}</span>
+                    <h3 className="font-medium text-gray-800 text-sm line-clamp-1 mt-1 group-hover:text-teal-600 transition-colors">
+                      {product.name}
+                    </h3>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-orange-500 font-bold">{product.points} <span className="text-xs font-normal">积分</span></span>
+                      <span className="text-[10px] text-gray-400">库存 {product.stock}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 min-w-[200px] border border-white/20 text-center">
-               <div className="text-sm text-teal-100 mb-1">当前可用积分</div>
-               <div className="text-4xl font-bold font-mono tracking-wider flex items-center justify-center gap-2">
-                 <Zap size={24} className="fill-yellow-400 text-yellow-400" />
-                 {userPoints}
-               </div>
-               <div className="text-xs text-teal-200 mt-2">再积累 800 分可升级 LV.9</div>
-            </div>
-         </div>
-         {/* Decor */}
-         <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl"></div>
-         <div className="absolute bottom-0 left-0 w-48 h-48 bg-yellow-400 opacity-10 rounded-full translate-y-1/2 -translate-x-1/3 blur-2xl"></div>
-      </div>
 
-      {/* Toolbar */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col md:flex-row gap-4 justify-between items-center sticky top-20 z-20">
-         <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-hide">
-            <span className="text-gray-400 text-sm flex items-center gap-1 shrink-0"><Filter size={14}/> 分类:</span>
-            {categories.map(cat => (
-              <button 
-                key={cat}
-                onClick={() => setFilter(cat)}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                  filter === cat 
-                    ? 'bg-teal-600 text-white shadow-sm' 
-                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {cat}
-              </button>
+            {/* Pagination */}
+            {pagination && pagination.totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-6">
+                {Array.from({ length: pagination.totalPages }, (_, i) => (
+                  <button
+                    key={i + 1}
+                    onClick={() => loadProducts(i + 1)}
+                    className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
+                      pagination.page === i + 1
+                        ? 'bg-teal-700 text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )
+      ) : (
+        /* Orders */
+        orders.length === 0 ? (
+          <div className="bg-white rounded-xl p-12 text-center border border-gray-100">
+            <Package size={48} className="mx-auto text-gray-300 mb-3" />
+            <p className="text-gray-400">暂无订单</p>
+            <button 
+              onClick={() => setActiveTab('products')}
+              className="mt-4 text-teal-600 hover:text-teal-700 text-sm"
+            >
+              去兑换商品
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {orders.map(order => (
+              <div key={order.id} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex gap-4">
+                <div className="w-20 h-20 bg-gray-100 rounded-lg shrink-0 overflow-hidden">
+                  {order.product.imageUrl ? (
+                    <img src={order.product.imageUrl} alt={order.product.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center">
+                      <Gift size={24} className="text-white/80" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-gray-800">{order.product.name}</h3>
+                    {getStatusBadge(order.status)}
+                  </div>
+                  <p className="text-sm text-gray-500 mt-1">兑换积分：{order.points}</p>
+                  <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <Clock size={12} />
+                      {new Date(order.createdAt).toLocaleDateString('zh-CN')}
+                    </span>
+                    <span>订单号：{order.id.slice(0, 8)}</span>
+                  </div>
+                </div>
+              </div>
             ))}
-         </div>
-         
-         <div className="relative w-full md:w-64">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input 
-              type="text" 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索商品..." 
-              className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 outline-none transition-all"
-            />
-         </div>
-      </div>
+          </div>
+        )
+      )}
 
-      {/* Product Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-         {filteredProducts.map(product => (
-            <div key={product.id} className="bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group flex flex-col h-full">
-               <div className="relative h-48 overflow-hidden bg-gray-100">
-                  <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                  
-                  {/* Tags */}
-                  <div className="absolute top-2 left-2 flex flex-col gap-1">
-                     {product.isHot && (
-                       <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm flex items-center gap-1">
-                         <Star size={8} fill="currentColor" /> 热销
-                       </span>
-                     )}
-                     {product.isNew && (
-                       <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">
-                         NEW
-                       </span>
-                     )}
+      {/* Confirm Modal */}
+      {showConfirmModal && selectedProduct && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in duration-300">
+            {exchangeSuccess ? (
+              /* Success State */
+              <div className="p-8 text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle size={32} className="text-green-600" />
+                </div>
+                <h3 className="font-bold text-lg text-gray-800 mb-2">兑换成功！</h3>
+                <p className="text-sm text-gray-500">您的订单已提交，请关注订单状态</p>
+              </div>
+            ) : (
+              <>
+                <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                  <h3 className="font-bold text-gray-800">确认兑换</h3>
+                  <button onClick={() => { setShowConfirmModal(false); setSelectedProduct(null); }}>
+                    <X size={20} className="text-gray-400 hover:text-gray-600" />
+                  </button>
+                </div>
+                <div className="p-4">
+                  <div className="flex gap-4">
+                    <div className="w-24 h-24 bg-gray-100 rounded-lg shrink-0 overflow-hidden">
+                      {selectedProduct.imageUrl ? (
+                        <img src={selectedProduct.imageUrl} alt={selectedProduct.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center">
+                          <Gift size={32} className="text-white/80" />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800">{selectedProduct.name}</h4>
+                      <p className="text-sm text-gray-500 mt-1">{selectedProduct.description}</p>
+                      <p className="text-orange-500 font-bold text-lg mt-2">{selectedProduct.points} 积分</p>
+                    </div>
                   </div>
                   
-                  <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded backdrop-blur-sm">
-                     库存: {product.stock}
+                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">当前积分</span>
+                      <span className="font-bold text-gray-800">{user?.points || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm mt-1">
+                      <span className="text-gray-500">需要积分</span>
+                      <span className="font-bold text-orange-500">-{selectedProduct.points}</span>
+                    </div>
+                    <div className="border-t border-gray-200 my-2"></div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">兑换后余额</span>
+                      <span className={`font-bold ${
+                        (user?.points || 0) >= selectedProduct.points ? 'text-teal-600' : 'text-red-500'
+                      }`}>
+                        {(user?.points || 0) - selectedProduct.points}
+                      </span>
+                    </div>
                   </div>
-               </div>
-               
-               <div className="p-4 flex-1 flex flex-col">
-                  <div className="flex items-center gap-2 mb-1">
-                     <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 rounded">{product.category}</span>
-                  </div>
-                  <h3 className="font-bold text-gray-800 text-sm mb-2 line-clamp-2 min-h-[40px]" title={product.name}>{product.name}</h3>
                   
-                  <div className="mt-auto flex items-end justify-between">
-                     <div className="text-teal-700 font-bold text-lg flex items-center gap-1">
-                        {product.price} <span className="text-xs font-normal text-gray-500">积分</span>
-                     </div>
-                     <button 
-                       onClick={() => handleRedeemClick(product.name, product.price)}
-                       disabled={product.stock <= 0}
-                       className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors ${
-                         product.stock > 0 
-                           ? 'bg-teal-600 text-white hover:bg-teal-700 shadow-sm shadow-teal-200' 
-                           : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                       }`}
-                     >
-                       <ShoppingBag size={14} /> {product.stock > 0 ? '立即兑换' : '已售罄'}
-                     </button>
-                  </div>
-               </div>
-            </div>
-         ))}
-      </div>
-      
-      {filteredProducts.length === 0 && (
-         <div className="text-center py-20">
-            <div className="bg-gray-100 p-4 rounded-full inline-block text-gray-400 mb-4">
-               <ShoppingBag size={48} />
-            </div>
-            <p className="text-gray-500">没有找到相关商品</p>
-         </div>
+                  {(user?.points || 0) < selectedProduct.points && (
+                    <p className="text-red-500 text-sm mt-3 text-center">积分不足，无法兑换</p>
+                  )}
+                </div>
+                <div className="p-4 border-t border-gray-100 flex gap-3">
+                  <button
+                    onClick={() => { setShowConfirmModal(false); setSelectedProduct(null); }}
+                    className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleExchange}
+                    disabled={exchanging || (user?.points || 0) < selectedProduct.points || selectedProduct.stock <= 0}
+                    className="flex-1 bg-teal-700 text-white px-4 py-2 rounded-lg font-medium hover:bg-teal-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {exchanging ? <Loader2 className="animate-spin" size={18} /> : <ShoppingCart size={18} />}
+                    确认兑换
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
